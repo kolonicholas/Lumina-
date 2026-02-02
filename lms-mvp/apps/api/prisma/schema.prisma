@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  MISSING
+}
+
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         Role
+  status       AccountStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  refreshToken String?
+  resetToken   String?
+  resetTokenAt DateTime?
+
+  courses       Course[]     @relation("InstructorCourses")
+  enrollments   Enrollment[] @relation("StudentEnrollments")
+  submissions   Submission[]
+  grades        Grade[]      @relation("Grader")
+  announcements Announcement[]
+  auditLogs     AuditLog[]   @relation("Actor")
+}
+
+model Course {
+  id           String       @id @default(uuid())
+  title        String
+  description  String
+  category     String
+  level        String
+  status       CourseStatus @default(DRAFT)
+  instructorId String?
+  createdAt    DateTime     @default(now())
+
+  instructor   User?         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  enrollments  Enrollment[]
+  modules      Module[]
+  announcements Announcement[]
+
+  @@index([status])
+}
+
+model Enrollment {
+  id         String           @id @default(uuid())
+  courseId   String
+  studentId  String
+  status     EnrollmentStatus @default(ACTIVE)
+  enrolledAt DateTime         @default(now())
+
+  course  Course @relation(fields: [courseId], references: [id])
+  student User   @relation("StudentEnrollments", fields: [studentId], references: [id])
+
+  @@unique([courseId, studentId])
+  @@index([studentId])
+}
+
+model Module {
+  id       String  @id @default(uuid())
+  courseId String
+  title    String
+  position Int
+
+  course      Course      @relation(fields: [courseId], references: [id])
+  lessons     Lesson[]
+  assignments Assignment[]
+
+  @@index([courseId])
+}
+
+model Lesson {
+  id            String  @id @default(uuid())
+  moduleId      String
+  title         String
+  content       String
+  attachmentUrl String?
+  position      Int
+  isPublished   Boolean @default(false)
+
+  module Module @relation(fields: [moduleId], references: [id])
+
+  @@index([moduleId])
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  moduleId    String
+  title       String
+  instructions String
+  dueDate     DateTime?
+  maxScore    Int
+  isPublished Boolean  @default(false)
+
+  module     Module      @relation(fields: [moduleId], references: [id])
+  submissions Submission[]
+
+  @@index([moduleId])
+}
+
+model Submission {
+  id           String           @id @default(uuid())
+  assignmentId String
+  studentId    String
+  textAnswer   String?
+  fileUrl      String?
+  submittedAt  DateTime         @default(now())
+  isLate       Boolean          @default(false)
+  status       SubmissionStatus @default(SUBMITTED)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  student    User       @relation(fields: [studentId], references: [id])
+  grade      Grade?
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+}
+
+model Grade {
+  id           String   @id @default(uuid())
+  submissionId String   @unique
+  score        Int
+  feedback     String
+  gradedBy     String
+  gradedAt     DateTime @default(now())
+  isPublished  Boolean  @default(false)
+
+  submission Submission @relation(fields: [submissionId], references: [id])
+  grader      User       @relation("Grader", fields: [gradedBy], references: [id])
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  courseId  String
+  title     String
+  message   String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id])
+  author User   @relation(fields: [createdBy], references: [id])
+
+  @@index([courseId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  action    String
+  entityType String
+  entityId  String
+  metadata  Json
+  createdAt DateTime @default(now())
+
+  actor User @relation("Actor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+}
